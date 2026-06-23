@@ -1,0 +1,12 @@
+fileQRier - Air-gapped file transfer via animated QR codes
+
+Objective:
+To allow 2 different devices (computers, mobile phones) to send and receive files using series of QR codes via their webcams.
+
+Must:
+- Single static HTML file. Can load required JS libraries from CDNs (e.g. for QR code, webcam, zip file, etc.)
+- Same HTML file for both sender and receiver
+- Sender doesn't need camera, Receiver must have camera
+- Receiver's camera will see Sender's screen
+- Sender will generate chunks of the file-to-transfer into series of QR code. Use Base64 (or anything else more efficient). It will continuously display the QR codes sequentially for each chunk in looping/rotating manner. The speed of the QR code changes is adjustable. Ideally every chunk has the sequence/total number so the receiver can track it. After the last chunk, send a QR code of the file checksum (CRC or SHA-1), then repeat from first chunk.
+- Receiver will continuously use its camera to scan the QR codes. It will eventually get all the chunks and then compare the received file checksum to compare to Sender's file checksum. Once match, save the file.

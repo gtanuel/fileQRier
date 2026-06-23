@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0a0a">
+<meta property="og:title" content="fileQRier">
+<meta property="og:description" content="Air-gapped file transfer through series of QR codes. No wifi, no bluetooth, no internet -- just camera.">
+<meta property="og:image" content="https://fileqrier.com/icon512.png">
+<title>fileQRier</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0a0a; color: #ccc;
+  overflow: hidden; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+h1, h2, h3, h4, h5, h6 { color: #fff; }
+a, a:visited, a:hover, a:active { color: inherit; text-decoration: none; }
+
+/* ===== FONT SIZES ===== */
+.fs-hero  { font-size: 56px; font-weight: 700; }
+.fs-title { font-size: 28px; font-weight: 700; }
+.fs-big   { font-size: 24px; }
+.fs-label { font-size: 16px; }
+.fs-hint  { font-size: 14px; color: #999; }
+.fs-hintmore { font-size: 12px; color: #666; }
+
+/* ===== COLORS ===== */
+.c-green  { color: #28c850; }
+.c-q      { color: #a2c1da; }
+.c-r      { color: #a1daa4; }
+
+/* ===== SCREEN MANAGEMENT ===== */
+.screen { animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.screen {
+  position: absolute; inset: 0;
+  display: none; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 20px;
+}
+.screen.active { display: flex; }
+
+/* ===== LANDING ===== */
+#landing { align-items: center; justify-content: center; text-align: center; }
+#landing h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+#landing.drag-over {
+  background: rgba(40,200,80,0.1);
+  outline: 4px dashed #28c850; outline-offset: -20px; border-radius: 50px;
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 14px 24px; border-radius: 12px;
+  font-size: 16px; font-weight: 600; border: none;
+  cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+  min-height: 48px; min-width: 48px;
+}
+.btn:active { transform: scale(0.96); }
+.btn-primary   { background: #4a9eff; color: #fff; }
+.btn-secondary { background: #222; color: #fff; border: 1px solid #333; }
+.btn-green     { background: #28c850; color: #fff; }
+.btn-blue      { background: #4a9eff; color: #fff; }
+.btn-landing-big { width: 120px; height: 120px; border-radius: 20px; font-size: 22px; }
+.btn-group     { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+/* ===== STATUS LINE (shared: sender + receiver) ===== */
+.status-line { text-align: center; width: 100%; margin-top: 12px; font-size: inherit; color: inherit; }
+.status-line .sl-file   { font-size: 16px; }
+.status-line .sl-detail { white-space: nowrap; }
+
+/* ===== ERROR OVERLAY ===== */
+.error-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 24px; z-index: 200;
+}
+.error-overlay.visible { display: flex; }
+.error-overlay h2 { color: #ff4a4a; font-size: 24px; }
+.error-overlay p  { color: inherit; font-size: inherit; text-align: justify; max-width: 380px; }
+
+/* ===== SENDER (gridbox + transmission in one screen) ===== */
+#sender { align-items: center; justify-content: center; }
+#sender .sender-inner { display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* Landscape: packed tight with small gaps */
+@media (orientation: landscape) {
+  #sender { justify-content: flex-start; }
+  #sender .sender-inner { gap: 8px; }
+  .sender-canvas-area { margin: 20px 0 0 0; }
+}
+/* Portrait: centered with comfortable gaps */
+@media (orientation: portrait) {
+  #sender { justify-content: center; }
+  #sender .sender-inner { gap: 16px; }
+  .sender-canvas-area { margin: 0; }
+}
+
+/* ===== RECEIVING ===== */
+@media (orientation: landscape) {
+  #receiving { justify-content: flex-start; }
+  #recv-camera-section { margin-bottom: 8px; }
+  #recv-btns-section { margin-top: 8px; }
+}
+@media (orientation: portrait) {
+  #receiving { justify-content: center; }
+}
+.sender-canvas-area { position: relative; width: var(--sender-canvas-size, min(85vw, 75vh)); height: var(--sender-canvas-size, min(85vw, 75vh)); flex-shrink: 0; }
+.sender-canvas-area canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 8px; }
+#gridbox-canvas { background: #000; z-index: 1; }
+#qr-canvas { image-rendering: pixelated; border-radius: 8px; background: #fff; z-index: 1; }
+/* Mode toggles */
+#sender.gridbox-mode #qr-canvas { visibility: hidden; z-index: 0; }
+#sender.gridbox-mode #gridbox-canvas { visibility: visible; z-index: 2; }
+#sender.transmission-mode #gridbox-canvas { visibility: hidden; z-index: 0; }
+#sender.transmission-mode #qr-canvas { visibility: visible; z-index: 2; }
+/* Info area — standard flow, mode toggles via display */
+.sender-info-area {
+  width: var(--sender-canvas-size, min(85vw, 75vh));
+  min-height: 60px; /* fixed height so canvas stays anchored across modes */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+}
+.sender-gridbox-info, .sender-trans-info { width: 100%; }
+@media (orientation: landscape) {
+  .sender-info-area { width: calc(100vw - 40px); }
+}
+.sender-gridbox-info { display: none; }
+.sender-trans-info { display: none; }
+#sender.gridbox-mode .sender-gridbox-info { display: block; }
+#sender.transmission-mode .sender-trans-info { display: block; }
+.progress-bar-container {
+  width: 100%; height: 28px; background: #1a1a1a; border-radius: 14px;
+  position: relative; overflow: hidden; touch-action: none;
+}
+.progress-bar-pointer {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 40px; background: #28c850; border-radius: 50%;
+  cursor: grab; left: 0%; box-shadow: 0 0 12px rgba(40,200,80,0.6); border: 3px solid #ff9500;
+}
+.progress-bar-pointer:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.1); }
+#trans-pause { background: #ff9500; color: #fff; }
+#recv-flip { background: #315d81; color: #fff; }
+#cfg-back, #cfg-begin, #trans-back, #trans-pause, #recv-back, #recv-comp-back, #recv-comp-relay { width: 110px; }
+.sender-btns { width: 100%; text-align: center; }
+
+/* ===== PROGRESS MAP ===== */
+#recv-progress-section { min-height: 60px; flex-shrink: 0; }
+.triangle-indicator {
+  position: absolute; top: -12px; left: 0; width: 0; height: 0;
+  border-left: 8px solid transparent; border-right: 8px solid transparent;
+  border-top: 10px solid #ff9500;
+}
+#progress-container { position: relative; width: 100%; }
+#progress-map-canvas { width: 100%; height: 20px; border-radius: 4px; background: #1a1a1a; }
+
+/* ===== CONFIG ===== */
+#config h2 { font-size: 28px; font-weight: 700; }
+.cfg-label  { display: block; font-size: 16px; color: inherit; margin-bottom: 8px; }
+.cfg-slider { width: 100%; accent-color: #28c850; }
+.ecc-btn    { flex: 1; padding: 16px 16px; font-size: 24px; display: block; text-align: center; line-height: 1.0; min-height: auto; height: auto; }
+.ecc-pct    { font-size: 14px; font-weight: 400; color: inherit; }
+#cfg-info-time { display: flex; align-items: baseline; justify-content: center; gap: 2px; }
+.cfg-time-tilde { font-size: 56px; font-weight: 400; opacity: 0.4; }
+
+/* ===== UTILITIES ===== */
+.mt-8   { margin-top: 8px; }
+.mt-12  { margin-top: 12px; }
+.mt-16  { margin-top: 16px; }
+.mt-24  { margin-top: 24px; }
+.mt-48  { margin-top: 48px; }
+.mt-auto { margin-top: auto; }
+.mb-20  { margin-bottom: 20px; }
+.tc     { text-align: center; }
+.nowrap { white-space: nowrap; }
+.hidden { display: none !important; }
+
+/* ===== LANDING FOOTER ===== */
+#landing-footer svg { vertical-align: middle; }
+#github-link { display: none; }
+#install-container { display: none; }
+#install { cursor: pointer; }
+#savehtml-container { display: none; }
+#savehtml { cursor: pointer; }
+#savehtml span { font-size: 18px; vertical-align: middle; }
+#version-container { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ===== LANDING ===== -->
+<div id="landing" class="screen active">
+  <h1>file<span class="c-q">Q</span><span class="c-r">R</span>ier</h1>
+  <p>Air-gapped file transfer</p>
+
+  <input type="file" id="file-input" class="hidden" accept="*/*">
+
+  <div class="btn-group mt-24">
+    <button class="btn btn-green btn-landing-big" id="btn-sender">Send</button>
+    <button class="btn btn-blue btn-landing-big" id="btn-receiver">Receive</button>
+  </div>
+  <p class="mt-8 fs-hint">or drag &amp; drop a file to Send</p>
+  
+  <div id="landing-footer" class="mt-48 fs-hintmore">
+    <a id="github-link" href="https://github.com/gtanuel/fileQRier" target="_blank" rel="noopener"><svg viewBox="0.5 1 23 22.28" height="18"><path d="M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943" fill="currentColor"/></svg> GitHub</a>
+    <span id="install-container">
+      &emsp;
+      <span id="install"><svg viewBox="2.76 0.1 20.04 23.8" height="18"><path d=" M 18.011 16.254 L 18.011 22.001 C 18.011 23.052 17.157 23.906 16.105 23.906 L 4.671 23.906 C 3.62 23.906 2.766 23.052 2.766 22.001 L 2.766 1.999 C 2.766 0.948 3.62 0.094 4.671 0.094 L 12.517 0.094 L 12.517 5.617 L 4.992 5.617 L 4.992 18.383 L 15.784 18.383 L 15.784 16.309 L 18.011 16.254 L 18.011 16.254 Z  M 11.426 8.938 L 17.081 14.444 L 22.798 8.756 L 20.908 7.112 L 18.166 10.043 L 18.011 2.11 L 15.784 2.11 L 15.87 9.937 L 13.047 7.112 L 11.426 8.938 Z " fill="currentColor"/></svg> Install</span>
+    </span>
+    <span id="savehtml-container">
+      &emsp;
+      <span id="savehtml" title="Download this app as a single HTML file"><span>&#x1F4BE;&#xFE0E;</span> HTML</span>
+    </span>
+    <span id="version-container">
+      <span id="version-spacer">&emsp;&middot;&emsp;</span> <span id="version">vX.Y.Z</span>
+    </span>
+  </div>
+</div>
+
+<!-- ===== CONFIG ===== -->
+<div id="config" class="screen">
+  <h2 class="mb-20">Transmission Settings</h2>
+  <div id="cfg-info-file" class="mb-20 fs-label"><span id="cfg-info-filename"></span> <span id="cfg-info-filesize" class="nowrap"></span></div>
+
+  <div class="mb-20">
+    <label class="cfg-label">QR Density: <span id="cfg-version-val">15</span></label>
+    <input type="range" id="cfg-version" min="1" max="40" value="15" class="cfg-slider">
+  </div>
+
+  <div class="mb-20">
+    <label class="cfg-label">Error Correction Level:</label>
+    <div class="btn-group">
+      <button class="btn btn-secondary ecc-btn" data-ecc="L">L<br><span class="ecc-pct">7%</span></button>
+      <button class="btn btn-secondary ecc-btn" data-ecc="M">M<br><span class="ecc-pct">15%</span></button>
+      <button class="btn btn-secondary ecc-btn" data-ecc="Q">Q<br><span class="ecc-pct">25%</span></button>
+      <button class="btn btn-secondary ecc-btn" data-ecc="H">H<br><span class="ecc-pct">30%</span></button>
+    </div>
+  </div>
+
+  <div class="mb-20">
+    <label class="cfg-label">Speed: <span id="cfg-speed-val">0.5</span> s</label>
+    <input type="range" id="cfg-speed" min="0.1" max="5.0" step="0.1" value="0.5" class="cfg-slider">
+  </div>
+
+  <div id="cfg-info-chunks" class="fs-label tc"></div>
+  <div id="cfg-info-time" class="fs-hero c-green tc mt-12"><span class="cfg-time-tilde">~</span><span id="cfg-time-value"></span></div>
+
+  <div class="btn-group mt-16">
+    <button class="btn btn-secondary" id="cfg-back">&lt; Back</button>
+    <button class="btn btn-green" id="cfg-begin">Begin</button>
+  </div>
+</div>
+
+<!-- ===== SENDER (gridbox + transmission, same position) ===== -->
+<div id="sender" class="screen gridbox-mode">
+  <div class="sender-inner">
+    <div class="sender-canvas-area">
+      <canvas id="gridbox-canvas"></canvas>
+      <canvas id="qr-canvas"></canvas>
+    </div>
+    <div class="sender-info-area">
+      <p class="fs-label tc sender-gridbox-info">Tap anywhere to start</p>
+      <div class="sender-trans-info">
+        <div class="progress-bar-container" id="progress-bar-container">
+          <div class="progress-bar-pointer" id="progress-bar-pointer"></div>
+        </div>
+        <div class="status-line" id="sender-status">
+          <span id="sender-status-file" class="sl-file"></span>
+          <span id="sender-status-detail" class="sl-detail"></span>
+        </div>
+      </div>
+    </div>
+    <div class="sender-btns">
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="trans-back">&lt; Back</button>
+        <button class="btn btn-secondary hidden" id="trans-pause">Pause</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECEIVING (camera + progress + completion) ===== -->
+<div id="receiving" class="screen">
+  <div id="recv-camera-section" style="display:flex;flex-direction:column;align-items:center;width:100%;margin-bottom:16px;">
+    <video id="recv-video" autoplay playsinline style="border-radius:12px;object-fit:cover;flex-shrink:0;"></video>
+    <canvas id="recv-scan-canvas" class="hidden"></canvas>
+  </div>
+  <div id="recv-progress-section">
+    <div id="recv-progress-content" style="visibility:hidden;">
+      <div id="progress-container">
+        <div class="triangle-indicator" id="triangle-indicator"></div>
+        <canvas id="progress-map-canvas"></canvas>
+      </div>
+      <div class="status-line" style="margin-top:8px;">
+        <span id="recv-status-file" class="sl-file"></span>
+        <span id="recv-status-detail" class="sl-detail"></span>
+      </div>
+    </div>
+  </div>
+  <div id="recv-btns-section" class="btn-group" style="margin-top:8px;">
+    <button class="btn btn-secondary" id="recv-back">&lt; Back</button>
+    <button class="btn btn-secondary" id="recv-flip">Flip Camera &#x1F504;&#xFE0E;</button>
+  </div>
+  <!-- Completion overlay (hidden until transfer completes) -->
+  <div id="recv-completion" class="hidden" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;">
+    <h2>Transfer Completed</h2>
+    <div style="display:flex;align-items:center;gap:4px;margin:16px 20px;">
+      <span style="font-size:48px;">📄</span>
+      <div class="status-line" style="text-align:left;margin:0;">
+        <span id="recv-comp-filename" class="sl-file"></span>
+        <span id="recv-comp-filesize" class="sl-detail nowrap"></span>
+      </div>
+    </div>
+    <div class="btn-group mt-12">
+      <button class="btn btn-secondary" id="recv-comp-back">&lt; Back</button>
+      <button class="btn btn-primary" id="recv-comp-download">Download</button>
+      <button class="btn btn-green" id="recv-comp-relay">Relay</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ERROR OVERLAY ===== -->
+<div class="error-overlay" id="error-overlay">
+  <h2 id="error-title">Error</h2>
+  <p id="error-message"></p>
+  <button class="btn btn-secondary" id="error-back">&lt; Back</button>
+</div>
+
+<!-- ===== SERVICE WORKER ===== -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+
+<!-- ===== JS LIBRARIES ===== -->
+<script src="qrcode-trimmed.min.js"></script>
+<script src="jsqr-trimmed.min.js"></script>
+
+<script>
+// ===== APP STATE =====
+const State = {
+  // File
+  file: null,
+  fileBuffer: null,       // ArrayBuffer
+  fileName: '',
+  fileSize: 0,
+
+  // Relay tracking
+  relaySource: null,      // screen to return to after relay Back (e.g., 'receiving')
+
+  // Sender config
+  config: {
+    version: 15,
+    ecc: 'M',
+    speed: 0.5,
+  },
+
+  // Sender transmission
+  headerChunk: null,      // Uint8Array
+  headerVersion: 1,       // QR version for HEADER (auto-computed, approach B)
+  dataChunks: [],         // Array<{offset: number, bytes: Uint8Array}>
+  currentChunkIndex: -1,  // -1 = HEADER, >= 0 = DATA index
+  isTransmitting: false,
+  loopTimer: null,
+
+  // Receiver
+  receiverState: 'IDLE',  // IDLE | HEADER_DETECTED | COLLECTING | COMPLETE | ERROR
+  receivedBuffer: null,   // ArrayBuffer
+  receivedChunks: null,   // Uint8Array bitmap (1 = received, 0 = not)
+  totalChunks: 0,
+  payloadSize: 0,
+  fileChecksum: null,     // Uint8Array SHA-256
+  receivedByteCount: 0,
+  lastReceivedChunkEnd: 0,
+  cameraStream: null,
+  scanInterval: null,
+  cameraFacingMode: 'environment', // 'environment' (rear) or 'user' (front)
+};
+
+// Load persisted camera preference
+try {
+  const savedCamera = localStorage.getItem('qrTransfer_cameraFacingMode');
+  if (savedCamera === 'user' || savedCamera === 'environment') {
+    State.cameraFacingMode = savedCamera;
+  }
+} catch(e) {}
+
+// ===== SCREEN MANAGEMENT =====
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  if (id === 'sender') calcSenderCanvasSize();
+  updateStatusLine();
+}
+
+/** Switch sender screen between gridbox and transmission mode. */
+function setSenderMode(mode) {
+  const sender = document.getElementById('sender');
+  const pauseBtn = document.getElementById('trans-pause');
+  sender.classList.remove('gridbox-mode', 'transmission-mode');
+  sender.classList.add(mode === 'gridbox' ? 'gridbox-mode' : 'transmission-mode');
+  if (pauseBtn) pauseBtn.classList.toggle('hidden', mode === 'gridbox');
+}
+
+function hideAllScreens() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+}
+
+// ===== SENDER CANVAS SIZING =====
+/** Calculate optimal canvas size so all sender elements fit the viewport. */
+function calcSenderCanvasSize() {
+  const sender = document.getElementById('sender');
+  if (!sender || !sender.classList.contains('active')) return;
+
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  const screenPadTop = 20;   // .screen padding-top
+  const screenPadBot = 20;   // .screen padding-bottom
+  const canvasMargin = 20;   // canvas top margin in landscape
+  const infoH = 60;          // sender-info-area natural height
+  const btnH = 60;           // button row height
+  const gaps = 16;           // flex gaps (8px x 2 in landscape)
+
+  // Available height for canvas = viewport - everything else
+  const availH = vh - screenPadTop - screenPadBot - canvasMargin - infoH - btnH - gaps;
+  const size = Math.max(100, Math.min(vw - 40, availH));
+  sender.style.setProperty('--sender-canvas-size', size + 'px');
+}
+
+window.addEventListener('resize', calcSenderCanvasSize);
+window.addEventListener('orientationchange', () => setTimeout(calcSenderCanvasSize, 100));
+
+/** Calculate optimal video size so all receiver elements fit the viewport. */
+function calcReceiverVideoSize() {
+  const receiving = document.getElementById('receiving');
+  if (!receiving || !receiving.classList.contains('active')) return;
+
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  const screenPad = 40;     // top + bottom padding
+  const cameraMargin = 16;  // recv-camera-section margin-bottom
+  const gapTop = 8;         // gap above buttons
+
+  // Measure actual heights of sibling elements
+  const btnsSection = document.getElementById('recv-btns-section');
+  const progressSection = document.getElementById('recv-progress-section');
+  const progressH = progressSection.offsetHeight; // grows with wrapped status line
+  const btnH = btnsSection.offsetHeight;
+
+  const availH = vh - screenPad - cameraMargin - progressH - btnH - gapTop;
+  const size = Math.max(100, Math.min(vw - 40, availH));
+
+  const video = document.getElementById('recv-video');
+  video.style.width = size + 'px';
+  video.style.height = size + 'px';
+  video.style.aspectRatio = '1';
+}
+
+window.addEventListener('resize', calcReceiverVideoSize);
+window.addEventListener('orientationchange', () => setTimeout(calcReceiverVideoSize, 100));
+
+// ===== STATUS LINE =====
+function updateStatusLine() {
+  // Receiver status
+  const recvFileEl = document.getElementById('recv-status-file');
+  const recvDetailEl = document.getElementById('recv-status-detail');
+  if (recvFileEl && recvDetailEl) {
+    if (State.receiverState === 'COLLECTING' && State.fileName) {
+      const pct = State.totalChunks > 0
+        ? Math.round((State.receivedByteCount / State.fileSize) * 100)
+        : 0;
+      recvFileEl.textContent = State.fileName;
+      recvDetailEl.textContent = ` · ${formatSize(State.receivedByteCount)} / ${formatSize(State.fileSize)} | ${pct}%`;
+    } else if (State.receiverState === 'COMPLETE' && State.fileName) {
+      recvFileEl.textContent = State.fileName;
+      recvDetailEl.textContent = ` · Complete!`;
+    } else {
+      recvFileEl.textContent = '';
+      recvDetailEl.textContent = '';
+    }
+  }
+}
+
+// ===== ERROR OVERLAY =====
+function showError(title, message) {
+  document.getElementById('error-title').textContent = title;
+  document.getElementById('error-message').innerHTML = message;
+  document.getElementById('error-overlay').classList.add('visible');
+}
+
+function hideError() {
+  document.getElementById('error-overlay').classList.remove('visible');
+}
+
+// ===== FILE SIZE FORMATTING =====
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+}
+
+/** Format milliseconds as HH:MM:SS or MM:SS. */
+function formatDuration(ms) {
+  const totalSec = Math.ceil(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+/** Update Config info panel (file, chunks, estimated time). */
+function updateConfigInfo() {
+  const fileEl = document.getElementById('cfg-info-file');
+  const chunksEl = document.getElementById('cfg-info-chunks');
+  const timeValEl = document.getElementById('cfg-time-value');
+
+  if (!State.fileBuffer) {
+    fileEl.textContent = '';
+    chunksEl.textContent = '';
+    timeValEl.textContent = '';
+    return;
+  }
+
+  // Filename (filesize)
+  document.getElementById('cfg-info-filename').textContent = State.fileName;
+  document.getElementById('cfg-info-filesize').textContent = `(${formatSize(State.fileSize)})`;
+
+  // Chunks x payload size
+  const payloadSize = ChunkManager.getPayloadSize(State.config.version, State.config.ecc);
+  const totalChunks = Math.ceil(State.fileSize / payloadSize) || 1;
+  chunksEl.textContent = `${payloadSize} bytes x ${totalChunks} chunks`;
+
+  // Estimated time for 1 loop (HEADER + all DATA)
+  const speed = State.config.speed;
+  const headerMs = Math.min(1000, 2 * speed * 1000);
+  const dataMs = totalChunks * speed * 1000;
+  document.getElementById('cfg-time-value').textContent = formatDuration(headerMs + dataMs);
+}
+
+// ===== FILE HANDLING =====
+function handleFile(file) {
+  State.file = file;
+  State.fileName = file.name;
+  State.fileSize = file.size;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    State.fileBuffer = e.target.result; // ArrayBuffer
+    loadConfig();
+    showScreen('config');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function clearFile() {
+  State.file = null;
+  State.fileBuffer = null;
+  State.fileName = '';
+  State.fileSize = 0;
+}
+
+// ===== DRAG & DROP (entire landing screen) =====
+const landingScreen = document.getElementById('landing');
+const fileInput = document.getElementById('file-input');
+
+landingScreen.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  landingScreen.classList.add('drag-over');
+});
+landingScreen.addEventListener('dragleave', (e) => {
+  if (!landingScreen.contains(e.relatedTarget)) {
+    landingScreen.classList.remove('drag-over');
+  }
+});
+landingScreen.addEventListener('drop', (e) => {
+  e.preventDefault();
+  landingScreen.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+  fileInput.value = ''; // reset so same file can be re-picked
+});
+
+// ===== BUTTON HANDLERS =====
+document.getElementById('btn-sender').addEventListener('click', () => {
+  fileInput.click();
+});
+
+document.getElementById('btn-receiver').addEventListener('click', () => {
+  // Reset receiver state
+  State.receiverState = 'IDLE';
+  State.receivedBuffer = null;
+  State.receivedChunks = null;
+  State.totalChunks = 0;
+  State.payloadSize = 0;
+  State.fileChecksum = null;
+  State.receivedByteCount = 0;
+  State.fileName = '';
+  hideError();
+  updateStatusLine();
+
+  // Reset receiving screen UI
+  document.getElementById('recv-camera-section').classList.remove('hidden');
+  document.getElementById('recv-progress-content').style.visibility = 'hidden';
+  document.getElementById('recv-btns-section').classList.remove('hidden');
+  const compEl = document.getElementById('recv-completion');
+  compEl.classList.add('hidden');
+  compEl.style.display = 'none';
+
+  showScreen('receiving');
+  calcReceiverVideoSize();
+  startCamera();
+});
+
+document.getElementById('cfg-back').addEventListener('click', () => {
+  if (State.relaySource) {
+    showScreen(State.relaySource);
+    State.relaySource = null;
+  } else {
+    clearFile();
+    showScreen('landing');
+  }
+});
+document.getElementById('trans-back').addEventListener('click', () => {
+  stopTransmission();
+  showScreen('config');
+});
+document.getElementById('trans-pause').addEventListener('click', () => {
+  if (!State.isTransmitting) return;
+  if (isPaused) {
+    isPaused = false;
+    document.getElementById('trans-pause').textContent = 'Pause';
+    document.getElementById('trans-pause').style.background = '#ff9500';
+    if (resumeResolve) resumeResolve();
+  } else {
+    isPaused = true;
+    document.getElementById('trans-pause').textContent = 'Resume';
+    document.getElementById('trans-pause').style.background = '#28c850';
+  }
+});
+document.getElementById('recv-back').addEventListener('click', stopCamera);
+document.getElementById('recv-flip').addEventListener('click', flipCamera);
+document.getElementById('error-back').addEventListener('click', () => {
+  hideError();
+  showScreen('landing');
+});
+
+// Inline completion buttons (on receiving screen)
+document.getElementById('recv-comp-back').addEventListener('click', () => {
+  stopCamera();
+  showScreen('landing');
+});
+document.getElementById('recv-comp-download').addEventListener('click', () => {
+  const blob = new Blob([State.receivedBuffer]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = State.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+document.getElementById('recv-comp-relay').addEventListener('click', () => {
+  stopCamera();
+  State.relaySource = 'receiving';
+  startRelay();
+});
+
+/** Start relay: received file becomes the file to send. */
+function startRelay() {
+  // Create a File object from the received buffer
+  const receivedFile = new File([State.receivedBuffer], State.fileName, {
+    type: 'application/octet-stream'
+  });
+
+  // Reset state for sending
+  State.file = receivedFile;
+  State.fileBuffer = State.receivedBuffer;
+  State.fileName = State.fileName;
+  State.fileSize = State.receivedBuffer.byteLength;
+  State.headerChunk = null;
+  State.dataChunks = [];
+  State.currentChunkIndex = -1;
+  State.isTransmitting = false;
+  State.loopTimer = null;
+
+  // Reset config to defaults
+  State.config = { version: 15, ecc: 'M', speed: 0.5 };
+
+  // Show Config Screen with defaults
+  showScreen('config');
+  loadConfig();
+}
+
+// ===== CONFIG SCREEN =====
+const cfgVersion = document.getElementById('cfg-version');
+const cfgSpeed = document.getElementById('cfg-speed');
+const cfgVersionVal = document.getElementById('cfg-version-val');
+const cfgSpeedVal = document.getElementById('cfg-speed-val');
+const eccBtns = document.querySelectorAll('.ecc-btn');
+
+// Slider value displays
+cfgVersion.addEventListener('input', () => {
+  cfgVersionVal.textContent = cfgVersion.value;
+  State.config.version = parseInt(cfgVersion.value);
+  updateConfigInfo();
+});
+cfgSpeed.addEventListener('input', () => {
+  cfgSpeedVal.textContent = parseFloat(cfgSpeed.value).toFixed(1);
+  State.config.speed = parseFloat(cfgSpeed.value);
+  updateConfigInfo();
+});
+
+// ECC toggle buttons
+eccBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    eccBtns.forEach(b => { b.classList.remove('btn-green'); b.classList.add('btn-secondary'); });
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-green');
+    State.config.ecc = btn.dataset.ecc;
+    updateConfigInfo();
+  });
+});
+
+/** Restore saved config from localStorage and apply to UI. */
+function loadConfig() {
+  try {
+    const saved = localStorage.getItem('qrTransfer_senderConfig');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      State.config.version = parsed.version || 15;
+      State.config.ecc = parsed.ecc || 'M';
+      State.config.speed = parsed.speed || 0.5;
+    }
+  } catch(e) { /* ignore corrupt data */ }
+
+  // Apply to UI controls
+  cfgVersion.value = State.config.version;
+  cfgVersionVal.textContent = State.config.version;
+  cfgSpeed.value = State.config.speed;
+  cfgSpeedVal.textContent = parseFloat(State.config.speed).toFixed(1);
+
+  eccBtns.forEach(b => {
+    b.classList.toggle('btn-green', b.dataset.ecc === State.config.ecc);
+    b.classList.toggle('btn-secondary', b.dataset.ecc !== State.config.ecc);
+  });
+
+  updateConfigInfo();
+}
+
+/** Persist current config to localStorage. Called on "Begin". */
+function saveConfig() {
+  try {
+    localStorage.setItem('qrTransfer_senderConfig', JSON.stringify({
+      version: State.config.version,
+      ecc: State.config.ecc,
+      speed: State.config.speed,
+    }));
+  } catch(e) { /* ignore quota errors */ }
+}
+
+document.getElementById('cfg-begin').addEventListener('click', async () => {
+  // Read current UI values into state
+  State.config.version = parseInt(cfgVersion.value);
+  State.config.ecc = State.config.ecc; // already set by ECC button clicks
+  State.config.speed = parseFloat(cfgSpeed.value);
+
+  // Persist for next time
+  saveConfig();
+
+  // Prepare chunks (SHA-256 + HEADER + DATA slicing + QR encoding)
+  const ok = await prepareChunks();
+  if (!ok) return;
+
+  // Advance to Gridbox
+  showScreen('sender');
+  setSenderMode('gridbox');
+  initGridbox();
+});
+
+// ===== GRIDBOX =====
+const gridboxCanvas = document.getElementById('gridbox-canvas');
+const gridboxCtx = gridboxCanvas.getContext('2d');
+
+function initGridbox() {
+  const size = 1000;
+  gridboxCanvas.width = size;
+  gridboxCanvas.height = size;
+
+  // White background (quiet zone / border)
+  gridboxCtx.fillStyle = '#fff';
+  gridboxCtx.fillRect(0, 0, size, size);
+
+  // White inner area with black grid lines
+  const margin = 50; // white border width, like QR quiet zone
+  const inner = size - margin * 2;
+  gridboxCtx.fillStyle = '#fff';
+  gridboxCtx.fillRect(margin, margin, inner, inner);
+
+  // Simple grid lines (black, thin)
+  const cols = 16;
+  const cellSize = inner / cols;
+  gridboxCtx.strokeStyle = '#000';
+  gridboxCtx.lineWidth = 4;
+  gridboxCtx.beginPath();
+  for (let i = 1; i < cols; i++) {
+    const pos = margin + i * cellSize;
+    gridboxCtx.moveTo(pos, margin);
+    gridboxCtx.lineTo(pos, margin + inner);
+    gridboxCtx.moveTo(margin, pos);
+    gridboxCtx.lineTo(margin + inner, pos);
+  }
+  gridboxCtx.stroke();
+}
+
+document.getElementById('sender').addEventListener('click', (e) => {
+  // Ignore clicks on Back button (Pause is hidden in gridbox mode)
+  if (e.target.closest('#trans-back')) return;
+  // Only handle tap-to-start in gridbox mode — entire screen is tappable
+  if (!document.getElementById('sender').classList.contains('gridbox-mode')) return;
+  if (State.isTransmitting) return;
+  setSenderMode('transmission');
+  startTransmission();
+});
+
+// ===== CAMERA =====
+const recvVideo = document.getElementById('recv-video');
+const recvScanCanvas = document.getElementById('recv-scan-canvas');
+const recvScanCtx = recvScanCanvas.getContext('2d', { willReadFrequently: true });
+
+/** Start camera and begin scanning. */
+function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError('Camera Unavailable', 'Camera is not detected.<br><br>The application must run in a secure<br>context (HTTPS or localhost).');
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: State.cameraFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+  }).then(stream => {
+    State.cameraStream = stream;
+    recvVideo.srcObject = stream;
+
+    // Wait for video metadata to know dimensions
+    recvVideo.addEventListener('loadedmetadata', () => {
+      recvScanCanvas.width = recvVideo.videoWidth;
+      recvScanCanvas.height = recvVideo.videoHeight;
+      startScanning();
+    }, { once: true });
+  }).catch(err => {
+    showError('Camera Error', 'Camera access is required.<br><br>Please reload the page and<br>allow camera permissions.');
+  });
+}
+
+/** Flip camera between front and rear. */
+function flipCamera() {
+  State.cameraFacingMode = State.cameraFacingMode === 'environment' ? 'user' : 'environment';
+  try { localStorage.setItem('qrTransfer_cameraFacingMode', State.cameraFacingMode); } catch(e) {}
+  // Stop current stream
+  if (State.cameraStream) {
+    State.cameraStream.getTracks().forEach(t => t.stop());
+  }
+  if (State.scanInterval) {
+    clearInterval(State.scanInterval);
+    State.scanInterval = null;
+  }
+  // Restart with new facing mode
+  startCamera();
+}
+
+/** Stop camera and all scanning. */
+function stopCamera() {
+  if (State.scanInterval) {
+    clearInterval(State.scanInterval);
+    State.scanInterval = null;
+  }
+  if (State.cameraStream) {
+    State.cameraStream.getTracks().forEach(t => t.stop());
+    State.cameraStream = null;
+  }
+  showScreen('landing');
+}
+
+// ===== QR DECODING PIPELINE =====
+/**
+ * Scan camera frames at max 15 FPS using jsQR.
+ * Extracts raw bytes from decoded QR codes.
+ */
+function startScanning() {
+  if (State.scanInterval) clearInterval(State.scanInterval);
+
+  // Debounce to max 15 FPS (~66ms intervals)
+  State.scanInterval = setInterval(scanFrame, 66);
+}
+
+/** Extract one frame from video and attempt QR decode. */
+function scanFrame() {
+  if (!State.cameraStream) return;
+  if (State.cameraStream.getTracks().every(t => t.readyState !== 'live')) return;
+
+  // Draw current video frame to offscreen canvas
+  recvScanCtx.drawImage(recvVideo, 0, 0, recvScanCanvas.width, recvScanCanvas.height);
+  const imageData = recvScanCtx.getImageData(0, 0, recvScanCanvas.width, recvScanCanvas.height);
+
+  // Decode QR code using jsQR
+  const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+  if (code) {
+    // jsQR returns Uint8ClampedArray; convert to Uint8Array
+    const rawBytes = new Uint8Array(code.binaryData);
+    onQrDecoded(rawBytes);
+  }
+}
+
+/**
+ * Called when a QR code is successfully decoded.
+ * Routes the raw bytes to the appropriate handler based on receiver state.
+ */
+function onQrDecoded(rawBytes) {
+  if (rawBytes.length === 0) return;
+
+  const type = rawBytes[0];
+
+  if (State.receiverState === 'IDLE' || State.receiverState === 'ERROR') {
+    if (type === 0x01) {
+      processHeaderChunk(rawBytes);
+    }
+  } else if (State.receiverState === 'HEADER_DETECTED' || State.receiverState === 'COLLECTING') {
+    if (type === 0x02) {
+      processDataChunk(rawBytes);
+    }
+  }
+}
+
+// ===== RECEIVER: HEADER PARSING =====
+/**
+ * Parse HEADER chunk: type(1B) | filesize(4B BE) | sha256(32B) | filename(variable)
+ * Filename = bytes from index 37 to end (QR frame boundary = delimiter).
+ */
+function processHeaderChunk(rawBytes) {
+  if (rawBytes.length < 38) return; // minimum: 1 + 4 + 32 + 1 byte filename
+
+  const dv = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+
+  // filesize (uint32 big-endian)
+  const fileSize = dv.getUint32(1);
+
+  // SHA-256 checksum (bytes 5..36)
+  const checksum = rawBytes.slice(5, 37);
+
+  // filename (bytes 37..end)
+  const filenameBytes = rawBytes.slice(37);
+  const fileName = new TextDecoder().decode(filenameBytes);
+
+  // Initialize receiver state
+  State.receiverState = 'HEADER_DETECTED';
+  State.fileName = fileName;
+  State.fileSize = fileSize;
+  State.fileChecksum = checksum;
+  State.receivedBuffer = new ArrayBuffer(fileSize);
+  State.totalChunks = 0; // inferred from first DATA chunk
+  State.receivedByteCount = 0;
+  State.payloadSize = 0; // inferred from first DATA chunk
+  State.receivedChunks = null; // allocated on first DATA chunk
+
+  // Reveal progress UI (space already reserved, just make visible)
+  document.getElementById('recv-progress-content').style.visibility = 'visible';
+  initProgressMap();
+
+  // Transition to COLLECTING immediately (no user gating)
+  State.receiverState = 'COLLECTING';
+  updateStatusLine();
+}
+
+// ===== RECEIVER: DATA CHUNK PROCESSING =====
+/**
+ * Parse DATA chunk: type(1B) | fileoffset(4B BE) | payload(variable)
+ * Writes payload to buffer, updates progress bitmap.
+ */
+function processDataChunk(rawBytes) {
+  if (State.receiverState !== 'COLLECTING') return;
+  if (rawBytes.length < 5) return; // minimum: 1 + 4
+
+  const dv = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+
+  // fileoffset (uint32 big-endian)
+  const fileOffset = dv.getUint32(1);
+
+  // payload (remaining bytes)
+  const payload = rawBytes.slice(5);
+
+  // Infer payloadSize from first DATA chunk
+  if (State.payloadSize === 0 && payload.length > 0) {
+    State.payloadSize = payload.length;
+    State.totalChunks = Math.ceil(State.fileSize / State.payloadSize) || 1;
+    State.receivedChunks = new Uint8Array(State.totalChunks);
+  }
+
+  if (State.payloadSize === 0) return;
+
+  // Determine chunk index
+  const chunkIndex = Math.floor(fileOffset / State.payloadSize);
+  if (chunkIndex < 0 || chunkIndex >= State.totalChunks) return;
+
+  // Write payload to buffer at correct offset
+  const bufferView = new Uint8Array(State.receivedBuffer);
+  bufferView.set(payload, fileOffset);
+
+  // Mark chunk as received
+  if (!State.receivedChunks[chunkIndex]) {
+    State.receivedChunks[chunkIndex] = 1;
+    State.receivedByteCount = Math.min(
+      State.receivedByteCount + payload.length,
+      State.fileSize
+    );
+  }
+  // Track last decoded chunk's byte end for triangle indicator
+  State.lastReceivedChunkEnd = fileOffset + payload.length;
+
+  // Update progress map
+  renderProgressMap();
+  updateStatusLine();
+
+  // Check if all chunks received
+  const allReceived = State.receivedChunks.every(v => v === 1);
+  if (allReceived) {
+    verifyAndComplete();
+  }
+}
+
+/**
+ * Verify SHA-256 of assembled file. Transition to COMPLETE or ERROR.
+ */
+async function verifyAndComplete() {
+  State.receiverState = 'COLLECTING'; // stay collecting during verify
+
+  try {
+    const computedHash = await ChunkManager.sha256(State.receivedBuffer);
+
+    // Compare checksums
+    let match = true;
+    if (computedHash.length === State.fileChecksum.length) {
+      for (let i = 0; i < computedHash.length; i++) {
+        if (computedHash[i] !== State.fileChecksum[i]) {
+          match = false;
+          break;
+        }
+      }
+    } else {
+      match = false;
+    }
+
+    if (match) {
+      // SUCCESS — show inline completion
+      State.receiverState = 'COMPLETE';
+      showReceiverCompletion();
+    } else {
+      // CHECKSUM MISMATCH
+      State.receiverState = 'ERROR';
+      showError('Checksum Failed',
+        'The received file did not pass SHA-256 verification. ' +
+        'The file may be corrupted. Please try again.');
+    }
+  } catch(e) {
+    State.receiverState = 'ERROR';
+    showError('Verification Error', 'Failed to compute file checksum. Please try again.');
+  }
+}
+
+/** Show inline completion on the receiving screen. */
+function showReceiverCompletion() {
+  // Turn off camera
+  if (State.scanInterval) {
+    clearInterval(State.scanInterval);
+    State.scanInterval = null;
+  }
+  if (State.cameraStream) {
+    State.cameraStream.getTracks().forEach(t => t.stop());
+    State.cameraStream = null;
+  }
+
+  // Hide camera, progress, and buttons
+  document.getElementById('recv-camera-section').classList.add('hidden');
+  document.getElementById('recv-progress-content').style.visibility = 'hidden';
+  document.getElementById('recv-btns-section').classList.add('hidden');
+
+  // Show completion overlay
+  const compEl = document.getElementById('recv-completion');
+  compEl.classList.remove('hidden');
+  compEl.style.display = 'flex';
+
+  // Set file info
+  document.getElementById('recv-comp-filename').textContent = State.fileName;
+  document.getElementById('recv-comp-filesize').textContent = ` (${formatSize(State.fileSize)})`;
+}
+
+// ===== PROGRESS MAP (canvas) =====
+const progressMapCanvas = document.getElementById('progress-map-canvas');
+const progressMapCtx = progressMapCanvas.getContext('2d');
+
+/** Initialize progress map canvas dimensions. */
+function initProgressMap() {
+  const container = progressMapCanvas.parentElement;
+  progressMapCanvas.width = container.clientWidth || 300;
+  progressMapCanvas.height = 20;
+  renderProgressMap();
+}
+
+/**
+ * Render the progress map on canvas.
+ * Each chunk maps to 1+ pixels. If multiple chunks map to same pixel,
+ * empty takes priority (if any chunk for a pixel is empty, that pixel is empty).
+ */
+function renderProgressMap() {
+  const w = progressMapCanvas.width;
+  const h = progressMapCanvas.height;
+  progressMapCtx.clearRect(0, 0, w, h);
+
+  if (State.totalChunks === 0 || State.fileSize === 0) return;
+
+  // Map pixels to byte offsets so the last (partial) chunk's pixel region
+  // matches its actual byte size, keeping triangle aligned with fill edge.
+  const bytesPerPixel = State.fileSize / w;
+
+  for (let px = 0; px < w; px++) {
+    const byteStart = Math.floor(px * bytesPerPixel);
+    const byteEnd = Math.floor((px + 1) * bytesPerPixel);
+
+    // Find which chunk covers this byte range
+    const chunkIdx = Math.floor(byteStart / State.payloadSize);
+
+    if (chunkIdx >= 0 && chunkIdx < State.totalChunks && State.receivedChunks[chunkIdx]) {
+      progressMapCtx.fillStyle = '#4a9eff';
+    } else {
+      progressMapCtx.fillStyle = '#1a1a1a';
+    }
+    progressMapCtx.fillRect(px, 0, 1, h);
+  }
+
+  // Update triangle indicator position
+  updateTriangleIndicator();
+}
+
+/** Position triangle indicator above progress map. */
+function updateTriangleIndicator() {
+  const triangle = document.getElementById('triangle-indicator');
+  if (!triangle || State.totalChunks === 0) return;
+
+  // Point to the byte end of the most recently decoded chunk
+  const byteEnd = State.lastReceivedChunkEnd;
+  const pct = State.fileSize > 0 ? byteEnd / State.fileSize : 0;
+  const mapWidth = progressMapCanvas.width;
+  triangle.style.left = (pct * mapWidth - 8) + 'px';
+}
+
+// ===== QR BYTE CAPACITY (computed at runtime via binary search against qrcode-generator) =====
+const _qrCapCache = {};
+function getQrByteCapacity(version, ecc) {
+  const key = version + ',' + ecc;
+  if (_qrCapCache[key] !== undefined) return _qrCapCache[key];
+  let lo = 0, hi = 4000;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi + 1) / 2);
+    try {
+      const qr = qrcode(version, ecc);
+      qr.addData('x'.repeat(mid));
+      qr.make();
+      lo = mid;
+    } catch(e) { hi = mid - 1; }
+  }
+  _qrCapCache[key] = lo;
+  return lo;
+}
+function getQrPayloadCapacity(version, ecc) {
+  return getQrByteCapacity(version, ecc) - 5; // minus 5B DATA overhead
+}
+
+/** Find minimum QR version that can hold at least `minBytes` with given ECC. */
+function minVersionForBytes(minBytes, ecc) {
+  for (let v = 1; v <= 40; v++) {
+    if (getQrByteCapacity(v, ecc) >= minBytes) return v;
+  }
+  return 40;
+}
+
+// ===== CHUNK MANAGER =====
+/**
+ * Handles file chunking, byte packing, and QR encoding.
+ */
+const ChunkManager = {
+  /** Overhead per DATA chunk: type(1B) + fileoffset(4B) */
+  DATA_OVERHEAD: 5,
+
+  /** Compute raw payload bytes available per DATA chunk for given version/ECC. */
+  getPayloadSize(version, ecc) {
+    return Math.max(1, getQrByteCapacity(version, ecc) - this.DATA_OVERHEAD);
+  },
+
+  /** Compute SHA-256 of an ArrayBuffer. Returns Promise<Uint8Array>. */
+  async sha256(buffer) {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    return new Uint8Array(hashBuffer);
+  },
+
+  /**
+   * Create the HEADER chunk as a Uint8Array.
+   * Layout: type(1B) | filesize(4B BE) | sha256(32B) | filename(variable UTF-8)
+   */
+  createHeaderChunk(fileBuffer, fileName) {
+    const filenameBytes = new TextEncoder().encode(fileName);
+    const headerLen = 1 + 4 + 32 + filenameBytes.length; // = 37 + filename length
+    const header = new Uint8Array(headerLen);
+    let offset = 0;
+
+    // type = 0x01 (HEADER)
+    header[offset++] = 0x01;
+
+    // filesize = uint32 big-endian
+    const fileSize = fileBuffer.byteLength;
+    header[offset++] = (fileSize >>> 24) & 0xFF;
+    header[offset++] = (fileSize >>> 16) & 0xFF;
+    header[offset++] = (fileSize >>> 8) & 0xFF;
+    header[offset++] = fileSize & 0xFF;
+
+    // SHA-256 (must be computed separately, passed in)
+    // We'll fill this in after hashing
+    const sha256Start = offset;
+    offset += 32;
+
+    // filename
+    header.set(filenameBytes, offset);
+
+    return { chunk: header, sha256Start, filenameBytes };
+  },
+
+  /**
+   * Slice file buffer into DATA chunks.
+   * Each DATA chunk: type(1B) | fileoffset(4B BE) | payload(variable)
+   * Returns array of { offset, bytes } objects.
+   */
+  createDataChunks(fileBuffer, payloadSize) {
+    const chunks = [];
+    const dv = new DataView(fileBuffer);
+    let byteOffset = 0;
+
+    while (byteOffset < fileBuffer.byteLength) {
+      const chunkLen = this.DATA_OVERHEAD + Math.min(payloadSize, fileBuffer.byteLength - byteOffset);
+      const bytes = new Uint8Array(chunkLen);
+      let offset = 0;
+
+      // type = 0x02 (DATA)
+      bytes[offset++] = 0x02;
+
+      // fileoffset = uint32 big-endian
+      bytes[offset++] = (byteOffset >>> 24) & 0xFF;
+      bytes[offset++] = (byteOffset >>> 16) & 0xFF;
+      bytes[offset++] = (byteOffset >>> 8) & 0xFF;
+      bytes[offset++] = byteOffset & 0xFF;
+
+      // payload
+      const sliceEnd = Math.min(byteOffset + payloadSize, fileBuffer.byteLength);
+      const slice = new Uint8Array(fileBuffer, byteOffset, sliceEnd - byteOffset);
+      bytes.set(slice, offset);
+
+      chunks.push({ offset: byteOffset, bytes });
+      byteOffset = sliceEnd;
+    }
+
+    return chunks;
+  },
+
+  /**
+   * Encode a byte chunk to a QR code on the given canvas.
+   * Uses qrcode-generator (CDN loaded). Byte mode with stringToBytes override.
+   * Renders at fixed internal resolution so all QR codes fill the same area.
+   */
+  encodeToCanvas(canvas, chunkBytes, version, ecc) {
+    const str = String.fromCharCode.apply(null, chunkBytes);
+    const qr = qrcode(version, ecc);
+    qr.addData(str);
+    qr.make();
+
+    const size = 1000;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#000000';
+
+    const moduleCount = qr.getModuleCount();
+    const margin = 4;
+    const drawSize = moduleCount + margin * 2;
+    const cellSize = size / drawSize;
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        if (qr.isDark(row, col)) {
+          ctx.fillRect((col + margin) * cellSize, (row + margin) * cellSize, cellSize + 0.5, cellSize + 0.5);
+        }
+      }
+    }
+  },
+
+  /**
+   * Synchronous QR render — no Promise, no setTimeout. Used during pointer drag.
+   */
+  renderSync(canvas, chunkBytes, version, ecc) {
+    const str = String.fromCharCode.apply(null, chunkBytes);
+    const qr = qrcode(version, ecc);
+    qr.addData(str);
+    qr.make();
+
+    const size = 1000;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#000000';
+
+    const moduleCount = qr.getModuleCount();
+    const margin = 4;
+    const drawSize = moduleCount + margin * 2;
+    const cellSize = size / drawSize;
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        if (qr.isDark(row, col)) {
+          ctx.fillRect((col + margin) * cellSize, (row + margin) * cellSize, cellSize + 0.5, cellSize + 0.5);
+        }
+      }
+    }
+  },
+};
+
+// ===== SENDER: CHUNK PREPARATION =====
+/**
+ * Prepare all chunks (HEADER + DATA) from the file buffer.
+ * Called after config is set and user taps Begin.
+ */
+async function prepareChunks() {
+  const { version, ecc } = State.config;
+  const payloadSize = ChunkManager.getPayloadSize(version, ecc);
+
+  // SHA-256
+  State.fileChecksum = await ChunkManager.sha256(State.fileBuffer);
+
+  // HEADER chunk
+  const headerResult = ChunkManager.createHeaderChunk(State.fileBuffer, State.fileName);
+  // Fill in SHA-256
+  const headerBytes = headerResult.chunk;
+  headerBytes.set(State.fileChecksum, headerResult.sha256Start);
+  State.headerChunk = headerBytes;
+
+  // Compute minimum QR version for HEADER (approach B)
+  State.headerVersion = minVersionForBytes(headerBytes.length, ecc);
+
+  // DATA chunks
+  State.dataChunks = ChunkManager.createDataChunks(State.fileBuffer, payloadSize);
+
+  return true;
+}
+
+// ===== SENDER: TRANSMISSION LOOP =====
+const qrCanvas = document.getElementById('qr-canvas');
+const progressBarContainer = document.getElementById('progress-bar-container');
+const progressBarPointer = document.getElementById('progress-bar-pointer');
+
+/** Start the QR transmission loop. */
+async function startTransmission() {
+  if (State.isTransmitting) return;
+  State.isTransmitting = true;
+  State.currentChunkIndex = -1; // -1 means HEADER
+  userJumped = false; // clear stale flag from gridbox tap
+
+  // Already on #sender screen; mode switched by click handler
+
+  const { version, ecc, speed } = State.config;
+  const headerDuration = Math.min(1000, 2 * speed * 1000); // ms
+  const dataDuration = speed * 1000; // ms
+
+  // Show HEADER first
+  await renderChunk(0, headerDuration);
+
+  // Then loop through DATA chunks
+  let dataIndex = 0;
+  while (State.isTransmitting) {
+    if (!State.isTransmitting) break;
+
+    if (isDraggingPointer && State.currentChunkIndex >= 0) {
+      // User is dragging — QR updated by setPointerFromEvent, just sync index
+      await new Promise(r => setTimeout(r, dataDuration));
+      dataIndex = State.currentChunkIndex;
+    } else {
+      // Sync dataIndex if user jumped via click (not drag — drag handled above)
+      if (userJumped) {
+        dataIndex = State.currentChunkIndex;
+        userJumped = false;
+      }
+      await renderChunk(dataIndex + 1, dataDuration);
+      dataIndex = (dataIndex + 1) % State.dataChunks.length;
+    }
+  }
+}
+
+/**
+ * Render a single chunk to the QR canvas.
+ * chunkIndex: 0 = HEADER, 1..N = DATA chunk indices
+ * duration: how long to show this chunk (ms)
+ */
+function renderChunk(chunkIndex, duration) {
+  return new Promise(resolve => {
+    // During drag, setPointerFromEvent handles QR rendering — just wait
+    if (isDraggingPointer) {
+      setTimeout(resolve, duration);
+      return;
+    }
+
+    // Update current chunk index for progress pointer
+    if (chunkIndex === 0) {
+      State.currentChunkIndex = -1; // HEADER
+    } else {
+      State.currentChunkIndex = chunkIndex - 1; // DATA
+    }
+
+    updateProgressPointer();
+
+    let chunkBytes;
+    let qrVersion;
+    if (chunkIndex === 0) {
+      chunkBytes = State.headerChunk;
+      qrVersion = State.headerVersion;
+    } else {
+      chunkBytes = State.dataChunks[chunkIndex - 1].bytes;
+      qrVersion = State.config.version;
+    }
+
+    ChunkManager.encodeToCanvas(
+      qrCanvas,
+      chunkBytes,
+      qrVersion,
+      State.config.ecc
+    );
+
+    // Pause gate: hold until resumed
+    if (isPaused) {
+      resumeResolve = () => {
+        resumeResolve = null;
+        userJumped = true; // sync dataIndex to pointer on next iteration
+        resolve();
+      };
+      return;
+    }
+
+    setTimeout(resolve, duration);
+  });
+}
+
+/** Stop the transmission loop. */
+function stopTransmission() {
+  State.isTransmitting = false;
+  State.currentChunkIndex = -1;
+  isPaused = false;
+  resumeResolve = null;
+  const pauseBtn = document.getElementById('trans-pause');
+  if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.style.background = '#ff9500'; }
+  if (State.loopTimer) {
+    clearTimeout(State.loopTimer);
+    State.loopTimer = null;
+  }
+  updateStatusLine();
+}
+
+// ===== PROGRESS POINTER (seekbar) =====
+let isDraggingPointer = false;
+let userJumped = false;
+let isPaused = false;
+let resumeResolve = null;
+
+function updateProgressPointer() {
+  if (State.dataChunks.length === 0) return;
+
+  const totalChunks = State.dataChunks.length;
+  const displayIndex = State.currentChunkIndex === -1 ? 0 : State.currentChunkIndex;
+  const pct = (displayIndex / (totalChunks - 1 || 1)) * 100;
+  progressBarPointer.style.left = pct + '%';
+  updateSenderStatus();
+}
+
+/** Update Sender status line: filename + offset/size + remaining time. */
+function updateSenderStatus() {
+  const fileEl = document.getElementById('sender-status-file');
+  const detailEl = document.getElementById('sender-status-detail');
+
+  if (!State.fileBuffer || State.dataChunks.length === 0) {
+    fileEl.textContent = '';
+    detailEl.textContent = '';
+    return;
+  }
+
+  const idx = State.currentChunkIndex >= 0 ? State.currentChunkIndex : 0;
+  const payloadSize = ChunkManager.getPayloadSize(State.config.version, State.config.ecc);
+  const fileOffset = idx * payloadSize;
+  const remainingChunks = State.dataChunks.length - idx;
+  const remainingMs = remainingChunks * State.config.speed * 1000;
+
+  fileEl.textContent = State.fileName;
+  detailEl.textContent = ` · ${formatSize(fileOffset)} / ${formatSize(State.fileSize)} | ~${formatDuration(remainingMs)}`;
+}
+
+function setPointerFromEvent(clientX) {
+  const rect = progressBarContainer.getBoundingClientRect();
+  let pct = (clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+
+  const totalChunks = State.dataChunks.length;
+  if (totalChunks === 0) return;
+
+  const chunkIndex = Math.round(pct * (totalChunks - 1));
+  State.currentChunkIndex = chunkIndex;
+  if (!isDraggingPointer) {
+    userJumped = true;
+  }
+  updateProgressPointer();
+
+  // Sync QR to pointer position immediately (synchronous, no await)
+  let chunkBytes;
+  if (chunkIndex < 0) {
+    chunkBytes = State.headerChunk;
+  } else {
+    chunkBytes = State.dataChunks[chunkIndex].bytes;
+  }
+  const qrVersion = chunkIndex < 0 ? State.headerVersion : State.config.version;
+  ChunkManager.renderSync(qrCanvas, chunkBytes, qrVersion, State.config.ecc);
+}
+
+// Mouse events
+progressBarPointer.addEventListener('mousedown', (e) => {
+  isDraggingPointer = true;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isDraggingPointer) return;
+  setPointerFromEvent(e.clientX);
+});
+document.addEventListener('mouseup', () => {
+  userJumped = true; // sync dataIndex to pointer on next iteration
+  isDraggingPointer = false;
+});
+
+// Touch events
+progressBarPointer.addEventListener('touchstart', (e) => {
+  isDraggingPointer = true;
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchmove', (e) => {
+  if (!isDraggingPointer) return;
+  setPointerFromEvent(e.touches[0].clientX);
+}, { passive: false });
+document.addEventListener('touchend', () => {
+  userJumped = true; // sync dataIndex to pointer on next iteration
+  isDraggingPointer = false;
+});
+
+// Touch on bar background to jump immediately
+progressBarContainer.addEventListener('touchstart', (e) => {
+  if (e.target === progressBarPointer) return;
+  isDraggingPointer = true;
+  setPointerFromEvent(e.touches[0].clientX);
+}, { passive: false });
+
+// Click/drag on bar background to jump immediately
+progressBarContainer.addEventListener('mousedown', (e) => {
+  if (e.target === progressBarPointer) return;
+  isDraggingPointer = true;
+  setPointerFromEvent(e.clientX);
+});
+
+// ===== INSTALL HANDLING =====
+// standalone == installed
+const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+
+if (!isInStandaloneMode) {
+  let deferredPrompt;
+  const installBtn = document.getElementById('install');
+  const installContainer = document.getElementById("install-container");
+
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+  // Android/Chrome: App can be installed
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installContainer.style.display = 'inline-block';
+  });
+
+  // iOS Safari: Show the install guide
+  if (isIos) {
+    document.addEventListener('DOMContentLoaded', () => {
+      installContainer.style.display = 'inline-block';
+    });
+  }
+  
+  // Install button handler
+  installBtn.addEventListener('click', async () => {
+    // Android/Chrome automatic prompt is available
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        deferredPrompt = null;
+        // Hide buttons after install
+        installContainer.style.display = 'none';
+        document.getElementById('github-link').style.display = 'none';
+        document.getElementById('savehtml-container').style.display = 'none';
+        document.getElementById('version-spacer').style.display = 'none';
+      }
+      return;
+    }
+
+    // iOS Safari manual workflow
+    if (isIos) {
+      showError("Installation Guide", "Tap the <b class='c-q'><svg height='18' viewBox='0 0 800 1020'><path fill='none' stroke='currentColor' stroke-width='80' d='M280 340H180Q40 340 40 480v360q0 140 140 140h440q140 0 140-140V480q0-140-140-140H520M400 660V75M230 225 400 55l170 170'/></svg> Share</b> button and then<br>select '<b class='c-q'>Add to Home Screen</b>'.");
+      return;
+    }
+
+    // Desktop Chrome / Edge fallback (if button is visible but prompt isn't cached)
+    showError("Installation Guide", "To install, look for the 'Install App' monitor<br>icon in your browser URL address bar.");
+  });
+}
+
+// ===== SAVE-HTML HANDLING =====
+if (!isInStandaloneMode) {
+  const savehtmlBtn = document.getElementById('savehtml');
+  const savehtmlContainer = document.getElementById('savehtml-container');
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    const isWebServer = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const hasFinePointer = window.matchMedia("(any-pointer: fine)").matches;
+    const isClientHintMobile = navigator.userAgentData ? navigator.userAgentData.mobile : false;
+    const isMobileDevice = (isMobileUA || isClientHintMobile) && !hasFinePointer;
+    
+    if (isWebServer && !isMobileDevice) {
+      savehtmlContainer.style.display = 'inline-block';
+    }
+  });
+  
+  savehtmlBtn.addEventListener('click', (e) => {
+    fetch(window.location.href)
+    .then(resp => {
+      if (!resp.ok) {
+        throw new Error("Error fetching HTML source");
+      }
+      return resp.text();
+    })
+    .then(txt => {
+      const blob = new Blob([txt], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'fileQRier.html';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    })
+    .catch(function(error) {
+      console.error("Failed to download file:", error);
+    });
+  });
+}
+
+// ===== FOOTER =====
+document.addEventListener('DOMContentLoaded', () => {
+  if (isInStandaloneMode) { // Installed instance
+    document.getElementById('version-spacer').style.display = 'none';
+  }
+  else { // Browser-view
+    document.getElementById('github-link').style.display = 'inline-block';
+  }
+
+  // Update Version # from (c) HTML comment
+  const lastChild = document.lastChild;
+  if (lastChild.nodeType === Node.COMMENT_NODE) {
+    const match = lastChild.data.match(/fileQRier (v\S+)/);
+    if (match) {
+      document.getElementById('version').textContent = match[1];
+      document.getElementById('version-container').style.display = 'inline-block';
+    }
+  }
+});
+</script>
+</body>
+</html>
+<!--!
+fileQRier v1.0.0 (c) Ganius Tanuel - MIT-0 License
+qrcode-generator v1.4.4 (modified) (c) Kazuhiko Arase - MIT License
+jsQR v1.4.0 (modified) (c) Cozmo Inc - Apache-2.0 License
+-->

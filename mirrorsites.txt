@@ -1,0 +1,9 @@
+## Main website
+https://fileqrier.com
+
+## Simple mirrors/backups
+https://fileqrier.surge.sh
+https://fileqrier.web.app
+https://fileqrier.firebaseapp.com
+https://wfh.nekoweb.org/fileQRier
+https://wfh.neocities.org/fileQRier  (offline caching doesn't work / may break install)
