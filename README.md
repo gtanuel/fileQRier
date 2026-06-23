@@ -80,11 +80,25 @@ For the actual coding sessions, I switched to the dense model (Qwen3.6-27B) and 
 - https://fileqrier.com
 - Mirror sites: see [mirrorsites.txt](mirrorsites.txt)
 
-## Relevant Projects
-- [Qrs](https://github.com/qifi-dev/qrs) -- *A much faster solution; uses Fountain Codes (Luby Transform).*
-- [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
-- [jsQR](https://github.com/cozmo/jsqr)
+## Similar Projects
+- [Qrs](https://github.com/qifi-dev/qrs)
+- [AirGapQR](https://github.com/evcli/AirGapQR)
+- [Code to QR Code](https://github.com/SDCVO/code-to-qr-code)
+- [qrtransfer](https://github.com/WestXu/qrtransfer)
+- [QRSync](https://github.com/huiihao/QRSync)
+- [QRBridge](https://github.com/wallechfox/QRBridge)
+- [Airgapped QR Code Transfer Web App](https://github.com/mohankumarelec/airgapped-qr-code-transfer)
+- [File2QRCodeGif](https://github.com/k-kuroguro/file-to-qr-code-gif)
+- [airgapped-file-transfer](https://github.com/AndreasGassmann/airgapped-file-transfer)
+- [QrCodeTransfer](https://github.com/cedricmartel/QrCodeTransfer)
+- [qrcast](https://github.com/pisces312/qrcast)
+- [QRFS – QR Filesystem](https://github.com/flyingsurveyor/qrfs)
+- [QR File Station](https://github.com/Mrx7968gt/qr-file-station)
 
 ## License
 
 MIT-0 (No Attribution)
+
+## Acknowledgments
+- [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) © Kazuhiko Arase - MIT License
+- [jsQR](https://github.com/cozmo/jsqr) © Cozmo Inc - Apache-2.0 License
