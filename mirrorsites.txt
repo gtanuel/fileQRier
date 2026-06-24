@@ -1,6 +1,11 @@
 ## Main website
 https://fileqrier.com
 
+## Linked with GitHub repo
+https://fileqrier.pages.dev
+https://fileqrier.vercel.app
+https://fileqrier.onrender.com
+
 ## Simple mirrors/backups
 https://fileqrier.surge.sh
 https://fileqrier.web.app
